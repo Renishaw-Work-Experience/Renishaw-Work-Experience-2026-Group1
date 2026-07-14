@@ -140,6 +140,77 @@ class Collectible(pygame.sprite.Sprite):
 
 
 # ============================================================================
+# 5b. LOADING IMAGES AND ANIMATING THEM (frame-by-frame)
+# ============================================================================
+# In a real project you'd load your frames from disk like this:
+#
+#     frame_1 = pygame.image.load("player_1.png").convert_alpha()
+#     frame_2 = pygame.image.load("player_2.png").convert_alpha()
+#     frame_3 = pygame.image.load("player_3.png").convert_alpha()
+#     frame_4 = pygame.image.load("player_4.png").convert_alpha()
+#     animation_frames = [frame_1, frame_2, frame_3, frame_4]
+#
+# Or, because the files are numbered, you can build the list with a loop:
+#
+#     animation_frames = []
+#     for i in range(1, 5):                       # 1, 2, 3, 4
+#         path = f"player_{i}.png"                # "player_1.png" ... "player_4.png"
+#         image = pygame.image.load(path).convert_alpha()
+#         animation_frames.append(image)
+#
+# `.convert_alpha()` speeds up drawing and keeps transparency (PNG alpha).
+#
+# For this tutorial we don't want to depend on any asset files, so we BUILD
+# each frame in code using pygame.draw. The result is still a pygame.Surface,
+# which is exactly what pygame.image.load() returns - so the animation code
+# further down works the same way whether the frames come from disk or code.
+
+def make_pacman_frame(mouth_angle_deg):
+    """Return a 128x128 Surface of a yellow 'pac-man' with the given mouth angle.
+    Replace this whole function with pygame.image.load(...) in a real project."""
+    size = 128
+    # SRCALPHA gives the surface a transparent background (per-pixel alpha)
+    surface = pygame.Surface((size, size), pygame.SRCALPHA)
+    center = (size // 2, size // 2)
+    radius = size // 2 - 4
+
+    # Body - a filled yellow circle
+    pygame.draw.circle(surface, YELLOW, center, radius)
+
+    # Mouth - cut a black wedge out by drawing a triangle over the circle
+    if mouth_angle_deg > 0:
+        half = math.radians(mouth_angle_deg / 2)
+        p_top = (center[0] + radius * math.cos(-half),
+                 center[1] + radius * math.sin(-half))
+        p_bot = (center[0] + radius * math.cos(half),
+                 center[1] + radius * math.sin(half))
+        pygame.draw.polygon(surface, BLACK, [center, p_top, p_bot])
+
+    # Eye
+    pygame.draw.circle(surface, BLACK, (center[0] + 10, center[1] - radius // 2), 6)
+
+    return surface
+
+
+# These 4 Surfaces stand in for player_1.png ... player_4.png
+animation_frames = [
+    make_pacman_frame(0),    # "player_1.png" - mouth closed
+    make_pacman_frame(30),   # "player_2.png" - mouth opening
+    make_pacman_frame(60),   # "player_3.png" - mouth wide open
+    make_pacman_frame(30),   # "player_4.png" - mouth closing (so the loop is smooth)
+]
+
+# --- Animation state -------------------------------------------------------
+# animation_index    -> which frame in the list we're showing right now
+# animation_timer    -> counts game-frames since we last switched image
+# FRAMES_PER_IMAGE   -> how long each image stays on screen, in game-frames
+#                       (game runs at 60 FPS, so 8 -> ~7 image-swaps per second)
+animation_index = 0
+animation_timer = 0
+FRAMES_PER_IMAGE = 8
+
+
+# ============================================================================
 # 6. GAME STATE VARIABLES
 # ============================================================================
 player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
@@ -177,6 +248,7 @@ def draw_start_screen():
     menu_items = [
         "1. Press 1 - Basic Shapes Demo",
         "2. Press 2 - Interactive Game",
+        "3. Press 3 - Animation Demo",
         "",
         "Press ESC - Quit"
     ]
@@ -298,6 +370,51 @@ def draw_game_screen():
         y += 40
 
 
+def draw_animation_screen():
+    """Screen that plays a frame-by-frame animation from a list of images."""
+    screen.fill(BLACK)
+
+    title = font_large.render("ANIMATION DEMO", True, WHITE)
+    screen.blit(title, (250, 20))
+
+    # ------------------------------------------------------------------
+    # 1) The BIG animated sprite in the middle of the screen.
+    #    We just pick the surface at animation_index from the list.
+    # ------------------------------------------------------------------
+    current_frame = animation_frames[animation_index]
+    #                                ^ same as animation_frames[0], [1], [2] ...
+    frame_rect = current_frame.get_rect(center=(SCREEN_WIDTH // 2,
+                                                SCREEN_HEIGHT // 2 - 40))
+    screen.blit(current_frame, frame_rect)
+    #           ^what to draw, ^where to draw it
+
+    info = font_small.render(f"Showing frame {animation_index + 1} of "
+                             f"{len(animation_frames)}", True, WHITE)
+    screen.blit(info, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 60))
+
+    # ------------------------------------------------------------------
+    # 2) A strip along the bottom showing ALL frames side by side, so you
+    #    can see the sequence we're looping through (like a film strip).
+    #    Highlight the frame that's currently on screen.
+    # ------------------------------------------------------------------
+    strip_y = SCREEN_HEIGHT - 200
+    label = font_small.render("Frames (like player_1.png ... player_4.png):",
+                              True, WHITE)
+    screen.blit(label, (60, strip_y - 30))
+
+    for i, frame in enumerate(animation_frames):
+        x = 80 + i * 200
+        if i == animation_index:
+            # Green outline around the current frame
+            pygame.draw.rect(screen, GREEN, (x - 4, strip_y - 4, 136, 136), 3)
+        screen.blit(frame, (x, strip_y))
+        num = font_small.render(f"frame {i + 1}", True, WHITE)
+        screen.blit(num, (x + 30, strip_y + 138))
+
+    instructions = font_small.render("Press 0 - Back to Menu", True, WHITE)
+    screen.blit(instructions, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT - 30))
+
+
 # ============================================================================
 # 8. MAIN GAME LOOP
 # ============================================================================
@@ -326,6 +443,8 @@ while running:
                 current_screen = 1
             elif event.key == pygame.K_2:  # 2 key - Go to game
                 current_screen = 2
+            elif event.key == pygame.K_3:  # 3 key - Go to animation demo
+                current_screen = 3
 
         # ====================================================================
         # MOUSE MOTION - Track mouse position
@@ -368,6 +487,16 @@ while running:
                 collectibles.append(Collectible(SCREEN_WIDTH - 70, 50))
 
     # ========================================================================
+    # ANIMATION UPDATE - advance to the next frame every FRAMES_PER_IMAGE ticks
+    # ========================================================================
+    if current_screen == 3:
+        animation_timer += 1                    # one more game-frame has passed
+        if animation_timer >= FRAMES_PER_IMAGE:
+            animation_timer = 0                 # reset the counter
+            animation_index = (animation_index + 1) % len(animation_frames)
+            #                                       ^ % wraps back to 0 after the last frame
+
+    # ========================================================================
     # DRAW SCREENS
     # ========================================================================
     if current_screen == 0:
@@ -376,6 +505,8 @@ while running:
         draw_shapes_screen()
     elif current_screen == 2:
         draw_game_screen()
+    elif current_screen == 3:
+        draw_animation_screen()
 
     # ========================================================================
     # UPDATE DISPLAY
