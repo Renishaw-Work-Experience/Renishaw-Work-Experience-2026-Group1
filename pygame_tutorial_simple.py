@@ -14,10 +14,11 @@ pygame.init()
 # 1. SCREEN SETUP - Define your game window
 # ============================================================================
 SCREEN_WIDTH = 1000
-SCREEN_HEIGHT = 700
+SCREEN_HEIGHT = 600
+
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 #                                  ^width      ^height
-# This creates a window 1000 pixels wide and 700 pixels tall
+# This creates a window 1000 pixels wide and 600 pixels tall
 
 pygame.display.set_caption("Pygame Tutorial - Complete Guide")
 # Sets the title of the window
