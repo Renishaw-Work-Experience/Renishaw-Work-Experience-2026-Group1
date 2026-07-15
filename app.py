@@ -12,6 +12,9 @@ pygame.display.set_caption("Hello Pygame")
 screen = pygame.display.set_mode((400, 300))
 clock = pygame.time.Clock()
 FPS = 60
+lives = 3
+immunity = 60  # frames of immunity after a collision
+score = 0
 
 # State variable (NOT the pygame surface) — 0 = start, 1 = game, 2 = settings
 # this was why it was failing as it was being reset to 0 every frame, so the game screen would never be drawn
@@ -46,6 +49,50 @@ class Pothole(pygame.sprite.Sprite):
 obstacles_list = pygame.sprite.Group()
 spawn_timer = 0
 SPAWN_EVERY = 60                                  # spawn one pothole every 60 frames (~1 second)
+
+
+# ---- Player + road (merged from Car Movement.py) --------------------------
+# Road geometry: the grey strip is centred in the 500-wide game window.
+GAME_WIDTH   = 500
+GAME_HEIGHT  = 600
+ROAD_WIDTH   = 360
+ROAD_LEFT    = (GAME_WIDTH - ROAD_WIDTH) // 2   # x where the road starts (70)
+ROAD_RIGHT   = ROAD_LEFT + ROAD_WIDTH           # x where the road ends   (430)
+PLAYER_SPEED = 4                                # pixels per frame
+
+class Player(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.Surface((50, 80))
+        self.image.fill((255, 0, 0))                       # red car
+        self.rect = self.image.get_rect(topleft=(x, y))
+
+    def update(self, keys):
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+            if self.rect.x > ROAD_LEFT:
+                self.rect.x -= PLAYER_SPEED
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            if self.rect.x < ROAD_RIGHT - self.rect.width:
+                self.rect.x += PLAYER_SPEED
+        if keys[pygame.K_w] or keys[pygame.K_UP]:
+            if self.rect.y > 0:
+                self.rect.y -= PLAYER_SPEED
+        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
+            if self.rect.y < GAME_HEIGHT - self.rect.height:
+                self.rect.y += PLAYER_SPEED
+
+
+class Background(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.image = pygame.Surface((ROAD_WIDTH, GAME_HEIGHT))
+        self.image.fill((50, 50, 50))                      # dark grey road
+        self.rect = self.image.get_rect(topleft=(ROAD_LEFT, 0))
+
+
+player = Player(200, 500)
+bg = Background()
+
 
 # Buttons at MODULE scope so both the drawing function and the event
 # handler can see them.
@@ -106,17 +153,53 @@ while running:
         draw_start_screen(screen)
 
     elif current_screen == 1:
+        # Update the player from held keys (continuous movement, once per frame).
+        keys = pygame.key.get_pressed()
+        player.update(keys)
+
         # Spawn a new pothole every SPAWN_EVERY frames.
         spawn_timer += 1
         if spawn_timer >= SPAWN_EVERY:
             spawn_timer = 0
-            x = random.randint(0, screen.get_width() - pothole_image.get_width())
+            x = random.randint(ROAD_LEFT, ROAD_RIGHT - pothole_image.get_width())
             obstacles_list.add(Pothole(x, 0))
 
         obstacles_list.update()
 
-        screen.fill((80, 80, 80))
-        obstacles_list.draw(screen)
+        # Draw: green surround, then the road, then obstacles, then the player on top.
+        screen.fill((100, 255, 100))                       # grass
+        screen.blit(bg.image, bg.rect)                     # road
+        obstacles_list.draw(screen)                        # potholes
+        screen.blit(player.image, player.rect)             # car
+
+        if (player.rect.colliderect(obstacles_list.sprites()[0].rect) if obstacles_list else False) and immunity == 0:
+            print("Collision detected!")
+            lives -= 1
+            immunity = 60  # frames of immunity after a collision
+            if lives <= 0:
+                print("Game Over!")
+                current_screen = 0
+                for obsticles in obstacles_list:
+                    obstacles_list.remove(obsticles)
+                screen = pygame.display.set_mode((400, 300))   # resize back to start screen
+                lives = 3
+                score = 0
+                player.rect.topleft = (200, 500)  # Reset player position
+        
+        if immunity > 0:
+            immunity -= 1
+            # Draw a visual indicator for immunity (e.g., a flashing effect)
+            if immunity % 10 < 5:  # Flash every 5 frames
+                pygame.draw.rect(screen, (255, 255, 0), player.rect, 3)  # Yellow border around the player
+        
+        score += 1  # Increment score every frame
+            
+        lives_text = font_small.render(f"Lives: {lives}", True, (255, 0, 0))
+        screen.blit(lives_text, (10, 10))
+        
+        
+        score_text = font_small.render(f"Score: {score}", True, (255, 255, 255))
+        screen.blit(score_text, (10, 40))
 
     elif current_screen == 2:
         draw_settings_screen(screen)
