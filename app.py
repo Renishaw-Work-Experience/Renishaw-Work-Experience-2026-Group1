@@ -12,9 +12,9 @@ pygame.display.set_caption("Hello Pygame")
 screen = pygame.display.set_mode((400, 300))
 clock = pygame.time.Clock()
 FPS = 60
-lives = 3
-immunity = 60  # frames of immunity after a collision
-score = 0
+lives = [3, 3]  # lives[0] for player1, lives[1] for player2
+immunity = [60,60]  # frames of immunity after a collision for player1 and player2
+score = [0, 0]  # score[0] for player1, score[1] for player2
 
 # State variable (NOT the pygame surface) — 0 = start, 1 = game, 2 = settings
 # this was why it was failing as it was being reset to 0 every frame, so the game screen would never be drawn
@@ -61,23 +61,24 @@ ROAD_RIGHT   = ROAD_LEFT + ROAD_WIDTH           # x where the road ends   (430)
 PLAYER_SPEED = 4                                # pixels per frame
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, x, y):
+    def __init__(self, x, y, player_num, colour):
         super().__init__()
+        self.player_num = player_num
         self.image = pygame.Surface((50, 80))
-        self.image.fill((255, 0, 0))                       # red car
+        self.image.fill(colour)
         self.rect = self.image.get_rect(topleft=(x, y))
 
     def update(self, keys):
-        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+        if (keys[pygame.K_a] and self.player_num == 1) or (keys[pygame.K_LEFT] and self.player_num == 2):
             if self.rect.x > ROAD_LEFT:
                 self.rect.x -= PLAYER_SPEED
-        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+        if (keys[pygame.K_d] and self.player_num == 1) or (keys[pygame.K_RIGHT] and self.player_num == 2):
             if self.rect.x < ROAD_RIGHT - self.rect.width:
                 self.rect.x += PLAYER_SPEED
-        if keys[pygame.K_w] or keys[pygame.K_UP]:
+        if (keys[pygame.K_w] and self.player_num == 1) or (keys[pygame.K_UP] and self.player_num == 2):
             if self.rect.y > 0:
                 self.rect.y -= PLAYER_SPEED
-        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
+        if (keys[pygame.K_s] and self.player_num == 1) or (keys[pygame.K_DOWN] and self.player_num == 2):
             if self.rect.y < GAME_HEIGHT - self.rect.height:
                 self.rect.y += PLAYER_SPEED
 
@@ -90,7 +91,9 @@ class Background(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(topleft=(ROAD_LEFT, 0))
 
 
-player = Player(200, 500)
+player1 = Player(200, 500, 1, (255, 0, 0))  # Red car for player 1
+player2 = Player(300, 500, 2, (0, 0, 255))  # Blue car for player 2
+player_group = pygame.sprite.Group(player1, player2)
 bg = Background()
 
 
@@ -153,9 +156,12 @@ while running:
         draw_start_screen(screen)
 
     elif current_screen == 1:
-        # Update the player from held keys (continuous movement, once per frame).
+        # Update the player1 from held keys (continuous movement, once per frame).
         keys = pygame.key.get_pressed()
-        player.update(keys)
+        if lives[0] > 0:
+            player1.update(keys)
+        if lives[1] > 0:
+            player2.update(keys)
 
         # Spawn a new pothole every SPAWN_EVERY frames.
         spawn_timer += 1
@@ -166,40 +172,98 @@ while running:
 
         obstacles_list.update()
 
-        # Draw: green surround, then the road, then obstacles, then the player on top.
+        # Draw: green surround, then the road, then obstacles, then the player1 on top.
         screen.fill((100, 255, 100))                       # grass
         screen.blit(bg.image, bg.rect)                     # road
         obstacles_list.draw(screen)                        # potholes
-        screen.blit(player.image, player.rect)             # car
+        screen.blit(player1.image, player1.rect)             # car
+        screen.blit(player2.image, player2.rect)             # car
 
-        if (player.rect.colliderect(obstacles_list.sprites()[0].rect) if obstacles_list else False) and immunity == 0:
+        if (player1.rect.colliderect(obstacles_list.sprites()[0].rect) if obstacles_list else False) and immunity[0] == 0:
             print("Collision detected!")
-            lives -= 1
-            immunity = 60  # frames of immunity after a collision
-            if lives <= 0:
+            lives[0] -= 1
+            immunity[0] = 60  # frames of immunity for player1 after a collision
+            if lives[0] <= 0 and lives[1] <= 0:
                 print("Game Over!")
                 current_screen = 0
                 for obsticles in obstacles_list:
                     obstacles_list.remove(obsticles)
                 screen = pygame.display.set_mode((400, 300))   # resize back to start screen
-                lives = 3
-                score = 0
-                player.rect.topleft = (200, 500)  # Reset player position
+                lives = [3, 3]
+                score = [0, 0]
+                player1.rect.topleft = (200, 500)  # Reset player1 position
+                player2.rect.topleft = (300, 500)  # Reset player2 position
+            elif lives[0] <= 0:
+                print("Player 1 has lost all lives!")
+                player1.rect.topleft = (1000, 1000) # Move player1 off-screen
         
-        if immunity > 0:
-            immunity -= 1
-            # Draw a visual indicator for immunity (e.g., a flashing effect)
-            if immunity % 10 < 5:  # Flash every 5 frames
-                pygame.draw.rect(screen, (255, 255, 0), player.rect, 3)  # Yellow border around the player
+        if (player2.rect.colliderect(obstacles_list.sprites()[0].rect) if obstacles_list else False) and immunity[1] == 0:
+            print("Collision detected!")
+            lives[1] -= 1
+            immunity[1] = 60  # frames of immunity for player2 after a collision
+            if lives[0] <= 0 and lives[1] <= 0:
+                print("Game Over!")
+                current_screen = 0
+                for obsticles in obstacles_list:
+                    obstacles_list.remove(obsticles)
+                screen = pygame.display.set_mode((400, 300))   # resize back to start screen
+                lives = [3, 3]
+                score = [0, 0]
+                player1.rect.topleft = (200, 500)  # Reset player1 position
+                player2.rect.topleft = (300, 500)  # Reset player2 position
+            elif lives[1] <= 0:
+                print("Player 2 has lost all lives!")
+                player2.rect.topleft = (1000, 1000) # Move player2 off-screen
+
+        if (player1.rect.colliderect(player2.rect)):
+            pygame.display.flip()
+            if player1.rect.y > player2.rect.y:
+                if player1.rect.y < screen.get_height() - player1.rect.height:
+                    player1.rect.y += 5  # push player 1 down
+                if player2.rect.y > 0:
+                    player2.rect.y -= 5  # push player 2 up
+            elif player1.rect.y < player2.rect.y:
+                if player1.rect.y > 0:
+                    player1.rect.y -= 5  # push player 1 up
+                if player2.rect.y < screen.get_height() - player2.rect.height:
+                    player2.rect.y += 5  # push player 2 down
+            if player1.rect.x > player2.rect.x:
+                if player1.rect.x < ROAD_RIGHT - player1.rect.width:
+                    player1.rect.x += 5  # push player 1 right
+                if player2.rect.x > ROAD_LEFT:
+                    player2.rect.x -= 5  # push player 2 left
+            elif player1.rect.x < player2.rect.x:
+                if player1.rect.x > ROAD_LEFT:
+                    player1.rect.x -= 5  # push player 1 left
+                if player2.rect.x < ROAD_RIGHT - player2.rect.width:
+                    player2.rect.x += 5  # push player 2 right
+
+        if immunity[0] > 0:
+            immunity[0] -= 1
+            # Draw a visual indicator for immunity1 (e.g., a flashing effect)
+            if immunity[0] % 10 < 5:  # Flash every 5 frames
+                pygame.draw.rect(screen, (255, 255, 0), player1.rect, 3)  # Yellow border around the player1
         
-        score += 1  # Increment score every frame
-            
-        lives_text = font_small.render(f"Lives: {lives}", True, (255, 0, 0))
-        screen.blit(lives_text, (10, 10))
-        
-        
-        score_text = font_small.render(f"Score: {score}", True, (255, 255, 255))
-        screen.blit(score_text, (10, 40))
+        if immunity[1] > 0:
+            immunity[1] -= 1
+            # Draw a visual indicator for immunity2 (e.g., a flashing effect)
+            if immunity[1] % 10 < 5:  # Flash every 5 frames
+                pygame.draw.rect(screen, (255, 255, 0), player2.rect, 3)  # Yellow border around the player2
+
+        if lives[0] > 0:
+            score[0] += 1  # Increment score1 every frame
+        if lives[1] > 0:
+            score[1] += 1  # Increment score2 every frame
+
+        lives_text1 = font_small.render(f"Lives: {lives[0]}", True, (255, 0, 0))
+        screen.blit(lives_text1, (10, 10))
+        lives_text2 = font_small.render(f"Lives: {lives[1]}", True, (0, 0, 255))
+        screen.blit(lives_text2, (400, 10))
+
+        score_text1 = font_small.render(f"Score: {score[0]}", True, (255, 255, 255))
+        screen.blit(score_text1, (10, 40))
+        score_text2 = font_small.render(f"Score: {score[1]}", True, (255, 255, 255))
+        screen.blit(score_text2, (400, 40))
 
     elif current_screen == 2:
         draw_settings_screen(screen)
