@@ -309,6 +309,7 @@ while running:
             print("Collision detected!")
             lives[0] -= 1
             immunity[0] = 60  # frames of immunity for player1 after a collision
+            obstacles_list.sprites()[0].kill()  # Remove the obstacle that was hit
             if lives[0] <= 0 and lives[1] <= 0:
                 print("Game Over!")
                 current_screen = 0
@@ -329,6 +330,7 @@ while running:
             print("Collision detected!")
             lives[1] -= 1
             immunity[1] = 60  # frames of immunity for player2 after a collision
+            obstacles_list.sprites()[0].kill()  # Remove the obstacle that was hit
             if lives[0] <= 0 and lives[1] <= 0:
                 print("Game Over!")
                 current_screen = 0
@@ -344,6 +346,16 @@ while running:
             elif lives[1] <= 0:
                 print("Player 2 has lost all lives!")
                 player2.rect.topleft = (1000, 1000) # Move player2 off-screen
+
+        if (player1.rect.colliderect(coins_list.sprites()[0].rect) if coins_list else False):
+            print("Coin collected by Player 1!")
+            score[0] += 250  # Increment score for player1
+            coins_list.sprites()[0].kill()  # Remove the coin that was collected
+        
+        if (player2.rect.colliderect(coins_list.sprites()[0].rect) if coins_list else False):
+            print("Coin collected by Player 2!")
+            score[1] += 250  # Increment score for player2
+            coins_list.sprites()[0].kill()  # Remove the coin that was collected
 
         if (player1.rect.colliderect(player2.rect)):
             pygame.display.flip()
@@ -388,12 +400,12 @@ while running:
         lives_text1 = font_small.render(f"Lives: {lives[0]}", True, (255, 0, 0))
         screen.blit(lives_text1, (10, 10))
         lives_text2 = font_small.render(f"Lives: {lives[1]}", True, (0, 0, 255))
-        screen.blit(lives_text2, (400, 10))
+        screen.blit(lives_text2, (380, 10))
 
         score_text1 = font_small.render(f"Score: {score[0]}", True, (255, 255, 255))
         screen.blit(score_text1, (10, 40))
         score_text2 = font_small.render(f"Score: {score[1]}", True, (255, 255, 255))
-        screen.blit(score_text2, (400, 40))
+        screen.blit(score_text2, (380, 40))
 
     elif current_screen == 2:
         draw_settings_screen(screen)
