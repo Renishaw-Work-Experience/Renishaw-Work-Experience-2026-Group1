@@ -282,7 +282,7 @@ settings_button = pygame.Rect(230, 280, 150, 50)
 def draw_start_screen(surface):
     surface.blit(START_SCREEN_BACKGROUND, (0, -350))
 
-    title         = font_small.render("Racing Game", True, (255, 255, 255))
+    title         = font_small.render("Racing Game", True, (0, 0, 0))
     start_text    = font_small.render("START",       True, (0, 0, 139))
     settings_text = font_small.render("SETTINGS",    True, (255, 0, 0))
 
