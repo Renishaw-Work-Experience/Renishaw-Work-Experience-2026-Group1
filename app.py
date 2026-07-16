@@ -150,9 +150,9 @@ rock_image    = load_or_fallback("rock.png",    _ellipse_placeholder())
 coin_image    = load_or_fallback("coin.png",    _ellipse_placeholder())
 
 # UI images (new in file1).
-PLAYER_1_CAR = trim_image(load_or_fallback("player_1car.png.png",
+PLAYER_2_CAR = trim_image(load_or_fallback("player_1car.png.png",
 create_player_surface((220, 40, 40))))
-PLAYER_2_CAR = trim_image(load_or_fallback("player2_car.png.png",
+PLAYER_1_CAR = trim_image(load_or_fallback("player2_car.png.png",
 create_player_surface((40, 40, 220))))
 START_SCREEN_BACKGROUND = load_or_fallback("start_screen_background.png.jpg",
 pygame.Surface((600, 600)))
