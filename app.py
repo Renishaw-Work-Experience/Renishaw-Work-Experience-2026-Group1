@@ -57,6 +57,7 @@ FPS = 60
 SCREEN_START    = 0
 SCREEN_GAME     = 1
 SCREEN_SETTINGS = 2
+SCREEN_END      = 3   # game-over leaderboard
 
 # Game window / road geometry (must match GAME_SIZE).
 GAME_WIDTH, GAME_HEIGHT = GAME_SIZE
@@ -86,6 +87,12 @@ STARTING_LIVES   = 3
 IMMUNITY_FRAMES  = 60
 COIN_SCORE_BONUS = 500
 
+# Leaderboard (persisted to the ``score_tracker`` file next to app.py,
+# using the same "ABC: 1234\n" line format code.py writes).
+SCORE_TRACKER_FILE      = os.path.join(os.path.dirname(__file__), "score_tracker")
+MAX_LEADERBOARD_ENTRIES = 10
+LEADERBOARD_NAME_LENGTH = 3
+
 
 # ---------------------------------------------------------------------------
 # Global state (per-player state uses index 0 = player1, index 1 = player2)
@@ -103,6 +110,20 @@ spawn_timer_rocks = 0
 # this was why it was failing as it was being reset to 0 every frame, so the
 # game screen would never be drawn — so that's why big issue :(
 current_screen = SCREEN_START
+
+# Game-over / leaderboard screen state.
+#   final_scores         — snapshot of the in-game scores at game-over time
+#   end_stage            — 'name_entry' while typing initials, 'leaderboard' after
+#   pending_name_entries — FIFO of (player_index, score) still awaiting initials
+#   name_input           — characters typed so far for the current prompt (<=3)
+#   leaderboard_entries  — top-10 (name, score) tuples read from score_tracker
+#   just_added_entries   — entries added this game-over, highlighted on display
+final_scores         = [0, 0]
+end_stage            = 'leaderboard'
+pending_name_entries = []
+name_input           = ""
+leaderboard_entries  = []
+just_added_entries   = []
 
 
 # ---------------------------------------------------------------------------
@@ -425,6 +446,9 @@ two_player_button  = pygame.Rect(320, 430, 170, 50)
 # match the scaled home_icon so the click zone lines up with the visible
 # house.
 home_icon_settings_rect = pygame.Rect(10, 10, 60, 60)
+# Same size and top-left position on the end/leaderboard screen for
+# consistency — click to return to the start screen.
+home_icon_end_rect      = pygame.Rect(10, 10, 60, 60)
 
 
 # ---------------------------------------------------------------------------
@@ -525,6 +549,110 @@ def draw_settings_screen(surface):
         pygame.draw.rect(surface, HIGHLIGHT_COLOUR, two_player_button, HIGHLIGHT_WIDTH)
 
 
+def draw_end_screen(surface):
+    """Game-over screen: 3-letter name entry, then the top-10 leaderboard.
+
+    Reads its state from module-level globals (final_scores, end_stage,
+    pending_name_entries, name_input, leaderboard_entries,
+    just_added_entries) so keyboard handling in the main event loop
+    can mutate them without having to pass anything back in.
+    """
+    surface.fill((0, 0, 0))
+
+    # Home icon (top-left) — click to go back to the start screen.
+    surface.blit(home_icon, home_icon_end_rect.topleft)
+
+    # Title (centred at the top of the 600x600 window).
+    title = font_large.render("Game Over", True, (255, 255, 255))
+    surface.blit(title, ((GAME_WIDTH - title.get_width()) // 2, 30))
+
+    if end_stage == 'name_entry' and pending_name_entries:
+        # ---- Stage 1: prompt the front-of-queue player for a 3-letter name ----
+        player_index, score_value = pending_name_entries[0]
+        player_colour = (255, 100, 100) if player_index == 0 else (100, 100, 255)
+
+        prompt = font_medium.render(
+            f"Player {player_index + 1}  \u2014  Score: {score_value}",
+            True, player_colour,
+        )
+        surface.blit(prompt, ((GAME_WIDTH - prompt.get_width()) // 2, 140))
+
+        instruct = font_small.render(
+            "Enter your 3-letter name:", True, (255, 255, 255),
+        )
+        surface.blit(instruct, ((GAME_WIDTH - instruct.get_width()) // 2, 220))
+
+        # Three slot boxes for the initials.
+        slot_w, slot_h, slot_gap = 70, 80, 20
+        total_w = LEADERBOARD_NAME_LENGTH * slot_w + (LEADERBOARD_NAME_LENGTH - 1) * slot_gap
+        start_x = (GAME_WIDTH - total_w) // 2
+        slot_y  = 270
+        for i in range(LEADERBOARD_NAME_LENGTH):
+            slot_rect = pygame.Rect(start_x + i * (slot_w + slot_gap), slot_y, slot_w, slot_h)
+            pygame.draw.rect(surface, (40, 40, 40), slot_rect)
+            # Active slot (next letter to be typed) is drawn with a
+            # yellow outline; already-filled and empty slots are white.
+            outline = (255, 215, 0) if i == len(name_input) else (255, 255, 255)
+            pygame.draw.rect(surface, outline, slot_rect, 3)
+            if i < len(name_input):
+                char_surf = font_large.render(name_input[i], True, (255, 215, 0))
+                surface.blit(
+                    char_surf,
+                    (slot_rect.centerx - char_surf.get_width()  // 2,
+                     slot_rect.centery - char_surf.get_height() // 2),
+                )
+
+        hint = font_small.render(
+            "A\u2013Z to type, BACKSPACE to delete, ENTER to confirm",
+            True, (180, 180, 180),
+        )
+        surface.blit(hint, ((GAME_WIDTH - hint.get_width()) // 2, 400))
+
+        remaining = len(pending_name_entries) - 1
+        if remaining > 0:
+            more = font_small.render(
+                f"({remaining} more player to go)" if remaining == 1
+                else f"({remaining} more players to go)",
+                True, (180, 180, 180),
+            )
+            surface.blit(more, ((GAME_WIDTH - more.get_width()) // 2, 440))
+
+    else:
+        # ---- Stage 2: show the top-10 leaderboard ----
+        heading = font_medium.render("Leaderboard", True, (255, 255, 255))
+        surface.blit(heading, ((GAME_WIDTH - heading.get_width()) // 2, 120))
+        pygame.draw.line(
+            surface, (255, 255, 255),
+            (GAME_WIDTH // 2 - 130, 165),
+            (GAME_WIDTH // 2 + 130, 165), 2,
+        )
+
+        # 10 rows: rank, name, score. Missing entries show as greyed placeholders
+        # so the layout is stable even on a fresh score_tracker file.
+        row_x  = 170
+        row_y0 = 185
+        row_h  = 32
+        for rank in range(1, MAX_LEADERBOARD_ENTRIES + 1):
+            if rank - 1 < len(leaderboard_entries):
+                entry_name, entry_score = leaderboard_entries[rank - 1]
+                colour = (
+                    (255, 215, 0)                           # gold for a fresh entry
+                    if (entry_name, entry_score) in just_added_entries
+                    else (255, 255, 255)
+                )
+                line_text = f"{rank:2d}.  {entry_name:<3}   {entry_score}"
+            else:
+                colour = (100, 100, 100)
+                line_text = f"{rank:2d}.  ---   ---"
+            row_surf = font_small.render(line_text, True, colour)
+            surface.blit(row_surf, (row_x, row_y0 + (rank - 1) * row_h))
+
+        hint = font_small.render(
+            "Click the house to return home", True, (180, 180, 180),
+        )
+        surface.blit(hint, ((GAME_WIDTH - hint.get_width()) // 2, 555))
+
+
 # ---------------------------------------------------------------------------
 # Game-flow helpers
 # ---------------------------------------------------------------------------
@@ -554,6 +682,88 @@ def reset_game():
         player2.rect.topleft = (1000, 1000)
 
 
+def load_leaderboard():
+    """Read the score_tracker file and return a list of (name, score) tuples.
+
+    Silently skips blank or malformed lines so a corrupt file can't crash the
+    game.
+    """
+    entries = []
+    if not os.path.exists(SCORE_TRACKER_FILE):
+        return entries
+    with open(SCORE_TRACKER_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or ":" not in line:
+                continue
+            name_part, _, score_part = line.partition(":")
+            name = name_part.strip()
+            try:
+                score_value = int(score_part.strip())
+            except ValueError:
+                continue
+            entries.append((name, score_value))
+    return entries
+
+
+def save_leaderboard(entries):
+    """Persist (name, score) tuples back to score_tracker, one per line."""
+    with open(SCORE_TRACKER_FILE, "w", encoding="utf-8") as f:
+        for name, score_value in entries:
+            f.write(f"{name}: {score_value}\n")
+
+
+def add_score_to_leaderboard(name, score_value):
+    """Insert a new score, dedupe by name (keep the highest), sort, cap at top 10."""
+    entries = load_leaderboard()
+    kept = []
+    kept_higher_duplicate = False
+    for existing_name, existing_score in entries:
+        if existing_name == name:
+            if existing_score >= score_value:
+                # The existing entry is at least as good — keep it, drop the
+                # new attempt.
+                kept.append((existing_name, existing_score))
+                kept_higher_duplicate = True
+            # else drop the older, lower-scoring duplicate so the new one wins
+        else:
+            kept.append((existing_name, existing_score))
+    if not kept_higher_duplicate:
+        kept.append((name, score_value))
+    kept.sort(key=lambda entry: entry[1], reverse=True)
+    return kept[:MAX_LEADERBOARD_ENTRIES]
+
+
+def start_end_screen(scores):
+    """Enter the game-over flow: queue name prompts for any active players."""
+    global end_stage, pending_name_entries, name_input
+    global leaderboard_entries, just_added_entries
+    final_scores[0], final_scores[1] = scores[0], scores[1]
+    pending_name_entries = [(0, scores[0])]
+    if selected_players == 2:
+        pending_name_entries.append((1, scores[1]))
+    name_input = ""
+    just_added_entries = []
+    leaderboard_entries = load_leaderboard()
+    end_stage = 'name_entry' if pending_name_entries else 'leaderboard'
+
+
+def submit_current_name():
+    """Save the current 3-letter name for the front-of-queue player."""
+    global end_stage, name_input, leaderboard_entries
+    if len(name_input) != LEADERBOARD_NAME_LENGTH:
+        return
+    if not pending_name_entries:
+        return
+    _player_index, score_value = pending_name_entries.pop(0)
+    leaderboard_entries = add_score_to_leaderboard(name_input, score_value)
+    save_leaderboard(leaderboard_entries)
+    just_added_entries.append((name_input, score_value))
+    name_input = ""
+    if not pending_name_entries:
+        end_stage = 'leaderboard'
+
+
 def handle_player_collision(player_index, player_sprite):
     """Check obstacles vs one player; decrement lives and handle game over."""
     global current_screen
@@ -574,8 +784,14 @@ def handle_player_collision(player_index, player_sprite):
 
             if game_over:
                 print("Game Over!")
-                current_screen = SCREEN_START
-                reset_game()
+                # Snapshot the current scores BEFORE reset_game() zeros them
+                # — the leaderboard reads from final_scores, and the
+                # name-entry prompts read from pending_name_entries.
+                start_end_screen(list(score))
+                current_screen = SCREEN_END
+                # reset_game() is deferred until the player clicks the
+                # home icon on the leaderboard, so the scores stay live
+                # in memory while the leaderboard is being shown.
             elif selected_players == 2 and lives[player_index] <= 0:
                 print(f"Player {player_index + 1} has lost all lives!")
                 player_sprite.rect.topleft = (1000, 1000)   # off-screen
@@ -661,6 +877,36 @@ while running:
                 print("Settings button clicked!")
                 screen = pygame.display.set_mode(SETTINGS_SIZE)
                 current_screen = SCREEN_SETTINGS
+
+        # ---- End-screen (leaderboard) clicks ----
+        elif current_screen == SCREEN_END and event.type == pygame.MOUSEBUTTONDOWN:
+            mouse_pos = pygame.mouse.get_pos()
+            if home_icon_end_rect.collidepoint(mouse_pos):
+                print("Home icon (end screen) clicked!")
+                reset_game()                                  # zero lives/score, park P2 if 1P
+                # Clear any half-typed name entry so a future game over starts clean.
+                pending_name_entries = []
+                name_input = ""
+                end_stage = 'leaderboard'
+                screen = pygame.display.set_mode(START_SIZE)
+                current_screen = SCREEN_START
+
+        # ---- End-screen name-entry typing (only while prompting) ----
+        elif (current_screen == SCREEN_END
+              and event.type == pygame.KEYDOWN
+              and end_stage == 'name_entry'):
+            if event.key == pygame.K_BACKSPACE:
+                name_input = name_input[:-1]
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                submit_current_name()
+            else:
+                ch = event.unicode
+                if (ch
+                        and len(ch) == 1
+                        and ch.isascii()
+                        and ch.isalpha()
+                        and len(name_input) < LEADERBOARD_NAME_LENGTH):
+                    name_input += ch.upper()
 
         # ---- Settings-screen clicks ----
         elif current_screen == SCREEN_SETTINGS and event.type == pygame.MOUSEBUTTONDOWN:
@@ -798,6 +1044,10 @@ while running:
         # back to the start size right away so the next frame renders correctly.
         if current_screen == SCREEN_START:
             screen = pygame.display.set_mode(START_SIZE)
+        elif current_screen == SCREEN_END:
+            # Game just ended — the end-screen leaderboard renders next
+            # frame; skip the in-game HUD/car drawing block below.
+            pass
         else:
             # ---- Immunity flash + cars on top ----
             if lives[0] > 0 and immunity[0] > 0:
@@ -836,6 +1086,9 @@ while running:
 
     elif current_screen == SCREEN_SETTINGS:
         draw_settings_screen(screen)
+
+    elif current_screen == SCREEN_END:
+        draw_end_screen(screen)
 
     pygame.display.flip()
 
